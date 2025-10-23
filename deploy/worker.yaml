@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: down-pvscope
+  namespace: down-pvscope
+  labels:
+    app: down-pvscope
+spec:
+  selector:
+    matchLabels:
+      app: down-pvscope
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        reloader.stakater.com/auto: "true"
+      labels:
+        app: down-pvscope
+        k8s.shifman.dev/netpol.kube-dns: "true"
+        k8s.shifman.dev/netpol.prometheus: "true"
+        k8s.shifman.dev/netpol.kube-apiserver: "true"
+    spec:
+      serviceAccountName: down-pvscope
+      securityContext:
+        fsGroupChangePolicy: "OnRootMismatch"
+        runAsNonRoot: true
+        fsGroup: 2000
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      automountServiceAccountToken: true
+      containers:
+        - securityContext:
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+          imagePullPolicy: Always
+          name: worker
+          image: docker.shifman.dev/shifman/down-pvscope
+      imagePullSecrets:
+        - name: docker-pull-secret

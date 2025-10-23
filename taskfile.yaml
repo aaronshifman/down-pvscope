@@ -14,10 +14,10 @@ tasks:
     cmd: go test -v ./...
   linux:build:
     desc: "Build the go binary for an linux container"
-    cmd: GOARCH=arm64 GOOS=linux go build -o bin/main ./cmd/...
+    cmd: CGO_ENABLED=0 GOARCH=amd64 GOOS=linux go build -o bin/main ./cmd/...
   docker:build:
     deps:
       - linux:build
     cmds:
-      - DOCKER_BUILDKIT=1 docker build . -t docker.shifman.dev/shifman/down-pvscope
+      - docker buildx build . -t docker.shifman.dev/shifman/down-pvscope --platform linux/arm64,linux/amd64
       - docker push docker.shifman.dev/shifman/down-pvscope
