@@ -1,0 +1,23 @@
+version: "3"
+
+tasks:
+  go:build:
+    desc: "Build the go binary"
+    cmd: go build -o bin/main ./cmd/...
+  go:run:
+    desc: "Run the go binary"
+    deps:
+      - go:build
+    cmd: ./bin/main
+  go:test:
+    desc: "Run down-pvscope tests"
+    cmd: go test -v ./...
+  linux:build:
+    desc: "Build the go binary for an linux container"
+    cmd: GOARCH=arm64 GOOS=linux go build -o bin/main ./cmd/...
+  docker:build:
+    deps:
+      - linux:build
+    cmds:
+      - DOCKER_BUILDKIT=1 docker build . -t docker.shifman.dev/shifman/down-pvscope
+      - docker push docker.shifman.dev/shifman/down-pvscope
