@@ -3,16 +3,48 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"time"
 
 	"github.com/aaronshifman/down-pvscope/pkg/activities"
+	"github.com/urfave/cli/v3"
 )
 
 func main() {
-	ctx := context.Background()
+	cmd := &cli.Command{
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "namespace",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "pvc",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "size",
+				Required: true,
+			},
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			namespace := cmd.String("namespace")
+			pvc := cmd.String("pvc")
+			size := cmd.String("size")
 
+			workflow(ctx, namespace, pvc, size)
+			return nil
+		},
+	}
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// pretend workflow until this is hooked up to temporal
+func workflow(ctx context.Context, namespace, pvc, size string) {
 	// find existing
-	originalPVC, err := activities.GetPVC(ctx, "down-pvscope", "bogus")
+	originalPVC, err := activities.GetPVC(ctx, namespace, pvc)
 	if err != nil {
 		panic(err)
 	}
@@ -27,7 +59,7 @@ func main() {
 
 	// create new PVC / provision new PV
 	// waits for pvc to bind before returning
-	newPVC, err := activities.CreateStagingPVC(ctx, *originalPVC, "0.5Gi")
+	newPVC, err := activities.CreateStagingPVC(ctx, *originalPVC, size)
 	if err != nil {
 		panic(err)
 	}
@@ -43,23 +75,25 @@ func main() {
 	// TODO: this is where rclone job goes
 
 	// drop both pvs
-	err = activities.DeletePVC(ctx, "down-pvscope", originalPVC.Name)
+	err = activities.DeletePVC(ctx, namespace, originalPVC.Name)
 	if err != nil {
 		panic(err)
 	}
-	err = activities.DeletePVC(ctx, "down-pvscope", newPVC.Name)
+	err = activities.DeletePVC(ctx, namespace, newPVC.Name)
 	if err != nil {
 		panic(err)
 	}
 
 	// map the new pv to the original pvc
 	fmt.Println("Rebinding PVC")
-	err = activities.RebindPV(ctx, "down-pvscope", newPVC.Spec.VolumeName, originalPVC, "0.5Gi")
+	err = activities.RebindPV(ctx, namespace, newPVC.Spec.VolumeName, originalPVC, size)
 	if err != nil {
 		panic(err)
 	}
 
 	// TODO: optionally drop the original pv
+
+	fmt.Println("Done: sleeping")
 
 	time.Sleep(10000 * time.Hour)
 }

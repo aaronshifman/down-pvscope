@@ -42,6 +42,12 @@ spec:
             allowPrivilegeEscalation: false
             seccompProfile:
               type: RuntimeDefault
+          command:
+            - ./main
+          args:
+            - --namespace=down-pvscope
+            - --pvc=bogus
+            - --size=0.5Gi
           imagePullPolicy: Always
           name: worker
           image: docker.shifman.dev/shifman/down-pvscope
