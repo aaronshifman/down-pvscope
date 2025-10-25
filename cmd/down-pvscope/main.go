@@ -51,7 +51,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	time.Sleep(3 * time.Second) // TODO: again hack for wait to delete
 
 	// map the new pv to the original pvc
 	fmt.Println("Rebinding PVC")

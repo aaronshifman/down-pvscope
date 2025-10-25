@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
 )
 
 const StagingSuffix = "-staging"
@@ -31,25 +32,8 @@ func CreateStagingPVC(ctx context.Context, originalPVC corev1.PersistentVolumeCl
 		Limits:   corev1.ResourceList{"storage": resource.MustParse(size)},
 	}
 
-	_, err = client.CoreV1().PersistentVolumeClaims(originalPVC.Namespace).Create(ctx, pvc, metav1.CreateOptions{})
-	if err != nil {
-		return corev1.PersistentVolumeClaim{}, errors.Wrap(err, "Could not create pvc")
-	}
-
-	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
-		vc, err := client.CoreV1().PersistentVolumeClaims(originalPVC.Namespace).Get(ctx, pvc.Name, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-
-		if vc.Status.Phase == corev1.ClaimBound {
-			return true, nil
-		}
-
-		return false, nil
-	})
-	if err != nil {
-		return corev1.PersistentVolumeClaim{}, errors.Wrap(err, "PVC never entered bound state")
+	if err = createPVCandWait(ctx, client, originalPVC.Namespace, pvc); err != nil {
+		return corev1.PersistentVolumeClaim{}, err
 	}
 
 	// reget the new pvc so we get an updated volume name
@@ -96,46 +80,24 @@ func RebindPV(ctx context.Context, namespace, pvName string, origPVC *corev1.Per
 		return err
 	}
 
-	pv, err := client.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
-	if err != nil {
+	if err := unlinkPV(ctx, client, pvName); err != nil {
 		return err
 	}
 
-	// unlink existing volume
-	fmt.Println("Unlinking existing volume")
-	pv.Spec.ClaimRef = nil
-	_, err = client.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
-	if err != nil {
-		return err
-	}
-	time.Sleep(1 * time.Second)
-
-	// create new PVC
 	fmt.Println("Creating cloned pvc")
-	origPVC.Spec.VolumeName = pvName
-	newPVC := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        origPVC.Name,
-			Namespace:   origPVC.Namespace,
-			Labels:      origPVC.Labels,
-			Annotations: origPVC.Annotations,
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes:      origPVC.Spec.AccessModes,
-			StorageClassName: origPVC.Spec.StorageClassName,
-			VolumeName:       pvName,
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{"storage": resource.MustParse(newSize)},
-			},
-		},
+	newPVC := origPVC.DeepCopy()
+	newPVC.Spec.VolumeName = pvName
+	newPVC.ObjectMeta = metav1.ObjectMeta{
+		Name:        origPVC.Name,
+		Labels:      origPVC.Labels,
+		Annotations: origPVC.Annotations,
+	}
+	newPVC.Spec.Resources = corev1.VolumeResourceRequirements{
+		Requests: corev1.ResourceList{"storage": resource.MustParse(newSize)},
+		Limits:   corev1.ResourceList{"storage": resource.MustParse(newSize)},
 	}
 
-	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, newPVC, metav1.CreateOptions{})
-	if err != nil {
-		return err
-	}
-
-	return err
+	return createPVCandWait(ctx, client, namespace, newPVC)
 }
 
 func GetPVC(ctx context.Context, namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
@@ -150,4 +112,30 @@ func GetPVC(ctx context.Context, namespace, pvcName string) (*corev1.PersistentV
 	}
 
 	return pvc, err
+}
+
+// createPVCandWait creates a pvc in k8s and waits until the PV is bound before returning
+// if either the pvc fails to create or the pvc fails to bind "fast enough" (2mins) this errors
+func createPVCandWait(ctx context.Context, client *kubernetes.Clientset, ns string, pvc *corev1.PersistentVolumeClaim) error {
+	_, err := client.CoreV1().PersistentVolumeClaims(ns).Create(ctx, pvc, metav1.CreateOptions{})
+	if err != nil {
+		return errors.Wrap(err, "Could not create pvc")
+	}
+
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
+		vc, err := client.CoreV1().PersistentVolumeClaims(ns).Get(ctx, pvc.Name, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+
+		if vc.Status.Phase == corev1.ClaimBound {
+			return true, nil
+		}
+
+		return false, nil
+	})
+	if err != nil {
+		return errors.Wrap(err, "PVC never entered bound state")
+	}
+	return nil
 }
