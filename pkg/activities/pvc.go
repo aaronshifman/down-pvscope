@@ -15,28 +15,28 @@ import (
 
 const StagingSuffix = "-staging"
 
-func CreateStagingPVC(ctx context.Context, namespace, name, size string) error {
+func CreateStagingPVC(ctx context.Context, originalPVC corev1.PersistentVolumeClaim, size string) (corev1.PersistentVolumeClaim, error) {
 	client, err := util.GetClientset()
 	if err != nil {
-		return err
+		return corev1.PersistentVolumeClaim{}, err
 	}
 
-	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: name + StagingSuffix},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{"storage": resource.MustParse(size)},
-			},
-		},
+	// clone the pvc but change name + set volume size
+	pvc := originalPVC.DeepCopy()
+	pvc.Spec.VolumeName = ""
+	pvc.ObjectMeta = metav1.ObjectMeta{Name: originalPVC.Name + StagingSuffix}
+	pvc.Spec.Resources = corev1.VolumeResourceRequirements{
+		Requests: corev1.ResourceList{"storage": resource.MustParse(size)},
+		Limits:   corev1.ResourceList{"storage": resource.MustParse(size)},
 	}
-	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, pvc, metav1.CreateOptions{})
+
+	_, err = client.CoreV1().PersistentVolumeClaims(originalPVC.Namespace).Create(ctx, pvc, metav1.CreateOptions{})
 	if err != nil {
-		return errors.Wrap(err, "Could not create pvc")
+		return corev1.PersistentVolumeClaim{}, errors.Wrap(err, "Could not create pvc")
 	}
 
 	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
-		vc, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, pvc.Name, metav1.GetOptions{})
+		vc, err := client.CoreV1().PersistentVolumeClaims(originalPVC.Namespace).Get(ctx, pvc.Name, metav1.GetOptions{})
 		if err != nil {
 			return false, err
 		}
@@ -47,8 +47,17 @@ func CreateStagingPVC(ctx context.Context, namespace, name, size string) error {
 
 		return false, nil
 	})
+	if err != nil {
+		return corev1.PersistentVolumeClaim{}, errors.Wrap(err, "PVC never entered bound state")
+	}
 
-	return err
+	// reget the new pvc so we get an updated volume name
+	newPVC, err := client.CoreV1().PersistentVolumeClaims(originalPVC.Namespace).Get(ctx, pvc.Name, metav1.GetOptions{})
+	if err != nil {
+		return corev1.PersistentVolumeClaim{}, errors.Wrap(err, "Unable to update the pvc reference")
+	}
+
+	return *newPVC, nil
 }
 
 func DeletePVC(ctx context.Context, namespace, pvcName string) error {

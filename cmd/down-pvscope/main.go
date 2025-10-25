@@ -27,31 +27,20 @@ func main() {
 
 	// create new PVC / provision new PV
 	// waits for pvc to bind before returning
-	err = activities.CreateStagingPVC(ctx, "down-pvscope", "bogus", "0.5Gi")
-	if err != nil {
-		panic(err)
-	}
-
-	// find new pv
-	newPVC, err := activities.GetPVC(ctx, "down-pvscope", "bogus"+activities.StagingSuffix)
+	newPVC, err := activities.CreateStagingPVC(ctx, *originalPVC, "0.5Gi")
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println(newPVC.Spec.VolumeName)
 
 	// make sure new PV is safe
+	// TODO: set the original reclaim policy on this PV
 	_, err = activities.EnsureReclaimPolicyRetain(ctx, newPVC.Spec.VolumeName)
 	if err != nil {
 		panic(err)
 	}
 
 	// TODO: this is where rclone job goes
-
-	// cache original pvc
-	originalSpec, err := activities.GetPVC(ctx, "down-pvscope", "bogus")
-	if err != nil {
-		panic(err)
-	}
 
 	// drop both pvs
 	err = activities.DeletePVC(ctx, "down-pvscope", "bogus")
@@ -66,7 +55,7 @@ func main() {
 
 	// map the new pv to the original pvc
 	fmt.Println("Rebinding PVC")
-	err = activities.RebindPV(ctx, "down-pvscope", newPVC.Spec.VolumeName, originalSpec, "0.5Gi")
+	err = activities.RebindPV(ctx, "down-pvscope", newPVC.Spec.VolumeName, originalPVC, "0.5Gi")
 	if err != nil {
 		panic(err)
 	}
