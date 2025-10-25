@@ -43,11 +43,11 @@ func main() {
 	// TODO: this is where rclone job goes
 
 	// drop both pvs
-	err = activities.DeletePVC(ctx, "down-pvscope", "bogus")
+	err = activities.DeletePVC(ctx, "down-pvscope", originalPVC.Name)
 	if err != nil {
 		panic(err)
 	}
-	err = activities.DeletePVC(ctx, "down-pvscope", "bogus"+activities.StagingSuffix)
+	err = activities.DeletePVC(ctx, "down-pvscope", newPVC.Name)
 	if err != nil {
 		panic(err)
 	}
