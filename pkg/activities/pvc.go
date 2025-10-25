@@ -6,44 +6,14 @@ import (
 	"time"
 
 	"github.com/aaronshifman/down-pvscope/pkg/util"
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 const StagingSuffix = "-staging"
-
-func GetMatchingPV(ctx context.Context, pvcName, ns string) (string, error) {
-	client, err := util.GetClientset()
-	if err != nil {
-		return "", err
-	}
-
-	pvc, err := client.CoreV1().PersistentVolumeClaims(ns).Get(ctx, pvcName, metav1.GetOptions{})
-	if err != nil {
-		return "", err
-	}
-
-	return pvc.Spec.VolumeName, nil
-}
-
-func EnsureReclaimPolicyRetain(ctx context.Context, pvName string) error {
-	client, err := util.GetClientset()
-	if err != nil {
-		return err
-	}
-
-	pv, err := client.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	if pv.Spec.PersistentVolumeReclaimPolicy != corev1.PersistentVolumeReclaimRetain {
-		pv.Spec.PersistentVolumeReclaimPolicy = corev1.PersistentVolumeReclaimRetain
-		_, err = client.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
-	}
-	return err
-}
 
 func CreateStagingPVC(ctx context.Context, namespace, name, size string) error {
 	client, err := util.GetClientset()
@@ -61,6 +31,23 @@ func CreateStagingPVC(ctx context.Context, namespace, name, size string) error {
 		},
 	}
 	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Create(ctx, pvc, metav1.CreateOptions{})
+	if err != nil {
+		return errors.Wrap(err, "Could not create pvc")
+	}
+
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
+		vc, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, pvc.Name, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+
+		if vc.Status.Phase == corev1.ClaimBound {
+			return true, nil
+		}
+
+		return false, nil
+	})
+
 	return err
 }
 

@@ -12,35 +12,35 @@ func main() {
 	ctx := context.Background()
 
 	// find existing
-	pv, err := activities.GetMatchingPV(ctx, "bogus", "down-pvscope")
+	originalPVC, err := activities.GetPVC(ctx, "down-pvscope", "bogus")
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(pv)
+	fmt.Println(originalPVC.Spec.VolumeName)
 
 	// mark existing safe
 	// TODO: store original status and restore at end
-	err = activities.EnsureReclaimPolicyRetain(ctx, pv)
+	_, err = activities.EnsureReclaimPolicyRetain(ctx, originalPVC.Spec.VolumeName)
 	if err != nil {
 		panic(err)
 	}
 
 	// create new PVC / provision new PV
+	// waits for pvc to bind before returning
 	err = activities.CreateStagingPVC(ctx, "down-pvscope", "bogus", "0.5Gi")
 	if err != nil {
 		panic(err)
 	}
 
 	// find new pv
-	time.Sleep(3 * time.Second) // TODO: hack wait for pvc to provision
-	newPV, err := activities.GetMatchingPV(ctx, "bogus"+activities.StagingSuffix, "down-pvscope")
+	newPVC, err := activities.GetPVC(ctx, "down-pvscope", "bogus"+activities.StagingSuffix)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(newPV)
+	fmt.Println(newPVC.Spec.VolumeName)
 
 	// make sure new PV is safe
-	err = activities.EnsureReclaimPolicyRetain(ctx, newPV)
+	_, err = activities.EnsureReclaimPolicyRetain(ctx, newPVC.Spec.VolumeName)
 	if err != nil {
 		panic(err)
 	}
@@ -49,6 +49,9 @@ func main() {
 
 	// cache original pvc
 	originalSpec, err := activities.GetPVC(ctx, "down-pvscope", "bogus")
+	if err != nil {
+		panic(err)
+	}
 
 	// drop both pvs
 	err = activities.DeletePVC(ctx, "down-pvscope", "bogus")
@@ -63,7 +66,7 @@ func main() {
 
 	// map the new pv to the original pvc
 	fmt.Println("Rebinding PVC")
-	err = activities.RebindPV(ctx, "down-pvscope", newPV, originalSpec, "0.5Gi")
+	err = activities.RebindPV(ctx, "down-pvscope", newPVC.Spec.VolumeName, originalSpec, "0.5Gi")
 	if err != nil {
 		panic(err)
 	}
