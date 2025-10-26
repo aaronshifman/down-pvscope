@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/pkg/errors v0.9.1
+	github.com/stretchr/testify v1.11.1
 	k8s.io/api v0.34.1
 )
 
@@ -18,6 +19,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
