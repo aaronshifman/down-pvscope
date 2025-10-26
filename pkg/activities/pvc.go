@@ -3,16 +3,13 @@ package activities
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/aaronshifman/down-pvscope/pkg/k8s"
 	"github.com/aaronshifman/down-pvscope/pkg/util"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	k8errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 const StagingSuffix = "-staging"
@@ -50,28 +47,8 @@ func DeletePVC(ctx context.Context, namespace, pvcName string) error {
 	if err != nil {
 		return err
 	}
+	return k8s.DeletePVCandWait(ctx, client, namespace, pvcName)
 
-	err = client.CoreV1().PersistentVolumeClaims(namespace).Delete(ctx, pvcName, metav1.DeleteOptions{})
-	if err != nil {
-		return errors.Wrap(err, "Unable to drop pvc")
-	}
-
-	err = wait.PollUntilContextTimeout(ctx, 1*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
-		_, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, pvcName, metav1.GetOptions{})
-
-		// resource hasn't been deleted yet
-		if err == nil {
-			return false, nil
-		}
-
-		// resource no longer on cluster
-		if k8errors.IsNotFound(err) {
-			return true, nil
-		}
-
-		return false, err
-	})
-	return err
 }
 
 func RebindPV(ctx context.Context, namespace, pvName string, origPVC *corev1.PersistentVolumeClaim, newSize string) error {
