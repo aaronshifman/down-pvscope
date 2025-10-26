@@ -19,33 +19,17 @@ func EnsureReclaimPolicyRetain(ctx context.Context, pvName string) (corev1.Persi
 		return "", err
 	}
 
-	pv, err := client.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+	return setPVRetainPolicy(ctx, client, pvName, corev1.PersistentVolumeReclaimRetain)
+}
+
+func SetReclaimPolicy(ctx context.Context, pvName string, policy corev1.PersistentVolumeReclaimPolicy) error {
+	client, err := util.GetClientset()
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	originalPolicy := pv.Spec.PersistentVolumeReclaimPolicy
-	if originalPolicy != corev1.PersistentVolumeReclaimRetain {
-		pv.Spec.PersistentVolumeReclaimPolicy = corev1.PersistentVolumeReclaimRetain
-		_, err = client.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
-		if err != nil {
-			return "", errors.Wrap(err, "Unable to change PV retain policy")
-		}
-	}
-
-	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
-		v, err := client.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
-		if err != nil {
-			return false, err
-		}
-
-		if v.Spec.PersistentVolumeReclaimPolicy == corev1.PersistentVolumeReclaimRetain {
-			return true, nil
-		}
-
-		return false, nil
-	})
-	return originalPolicy, err
+	_, err = setPVRetainPolicy(ctx, client, pvName, policy)
+	return err
 }
 
 func unlinkPV(ctx context.Context, client *kubernetes.Clientset, pvName string) error {
@@ -74,4 +58,37 @@ func unlinkPV(ctx context.Context, client *kubernetes.Clientset, pvName string) 
 		return false, nil
 	})
 	return err
+}
+
+func setPVRetainPolicy(ctx context.Context, client *kubernetes.Clientset, pvName string, policy corev1.PersistentVolumeReclaimPolicy) (corev1.PersistentVolumeReclaimPolicy, error) {
+	pv, err := client.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	originalPolicy := pv.Spec.PersistentVolumeReclaimPolicy
+	if originalPolicy != policy {
+		pv.Spec.PersistentVolumeReclaimPolicy = policy
+		_, err = client.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
+		if err != nil {
+			return "", errors.Wrap(err, "Unable to change PV retain policy")
+		}
+	} else {
+		// early abort - the starting policy matches
+		return policy, nil
+	}
+
+	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
+		v, err := client.CoreV1().PersistentVolumes().Get(ctx, pvName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+
+		if v.Spec.PersistentVolumeReclaimPolicy == policy {
+			return true, nil
+		}
+
+		return false, nil
+	})
+	return originalPolicy, err
 }

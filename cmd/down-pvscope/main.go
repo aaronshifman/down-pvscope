@@ -67,7 +67,7 @@ func workflow(ctx context.Context, namespace, pvc, size string) {
 
 	// make sure new PV is safe
 	// TODO: set the original reclaim policy on this PV
-	_, err = activities.EnsureReclaimPolicyRetain(ctx, newPVC.Spec.VolumeName)
+	originalPolicy, err := activities.EnsureReclaimPolicyRetain(ctx, newPVC.Spec.VolumeName)
 	if err != nil {
 		panic(err)
 	}
@@ -91,6 +91,12 @@ func workflow(ctx context.Context, namespace, pvc, size string) {
 	// map the new pv to the original pvc
 	fmt.Println("Rebinding PVC")
 	err = activities.RebindPV(ctx, namespace, newPVC.Spec.VolumeName, originalPVC, size)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Resetting the PV retain policy")
+	err = activities.SetReclaimPolicy(ctx, newPVC.Spec.VolumeName, originalPolicy)
 	if err != nil {
 		panic(err)
 	}
