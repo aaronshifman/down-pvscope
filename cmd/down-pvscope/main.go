@@ -72,7 +72,11 @@ func workflow(ctx context.Context, namespace, pvc, size string) {
 		panic(err)
 	}
 
-	// TODO: this is where rclone job goes
+	fmt.Println("Starting rclone job")
+	err = activities.Runrclone(ctx, originalPVC, &newPVC, namespace)
+	if err != nil {
+		panic(err)
+	}
 
 	// drop both pvs
 	err = activities.DeletePVC(ctx, namespace, originalPVC.Name)

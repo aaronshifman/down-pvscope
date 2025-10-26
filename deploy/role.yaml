@@ -7,3 +7,6 @@ rules:
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
     verbs: ["update", "list", "get", "delete", "create"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["update", "list", "get", "delete", "create"]
