@@ -7,77 +7,82 @@ import (
 	"github.com/aaronshifman/down-pvscope/pkg/k8s"
 	"github.com/aaronshifman/down-pvscope/pkg/util"
 	"github.com/pkg/errors"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
+	k8errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-const StagingSuffix = "-staging"
+type PVCActivities struct{}
 
-func CreateStagingPVC(ctx context.Context, originalPVC corev1.PersistentVolumeClaim, size string) (corev1.PersistentVolumeClaim, error) {
+const stagingSuffix = "-staging"
+
+func (a *PVCActivities) CreateStagingPVC(ctx context.Context, originalPVC util.PvcInfo, size string) (*util.PvcInfo, error) {
 	client, err := util.GetClientset()
 	if err != nil {
-		return corev1.PersistentVolumeClaim{}, err
+		return nil, err
 	}
 
 	// clone the pvc but change name + set volume size
-	pvc := originalPVC.DeepCopy()
-	pvc.Spec.VolumeName = ""
-	pvc.ObjectMeta = metav1.ObjectMeta{Name: originalPVC.Name + StagingSuffix}
-	pvc.Spec.Resources = corev1.VolumeResourceRequirements{
-		Requests: corev1.ResourceList{"storage": resource.MustParse(size)},
-		Limits:   corev1.ResourceList{"storage": resource.MustParse(size)},
+	originalPVC.VolumeName = ""
+	originalPVC.Name = originalPVC.Name + stagingSuffix
+	originalPVC.Annotations = nil
+	originalPVC.RequestedStorage = size
+	originalPVC.LimitStorage = size
+
+	pvc, err := originalPVC.ToK8s()
+	if err != nil {
+		return nil, errors.Wrap(err, "Unable to convert metadata to true k8s resource")
 	}
 
-	if err = k8s.CreatePVCandWait(ctx, client, originalPVC.Namespace, pvc); err != nil {
-		return corev1.PersistentVolumeClaim{}, err
+	err = k8s.CreatePVCandWait(ctx, client, originalPVC.Namespace, pvc)
+	if err != nil && !k8errors.IsAlreadyExists(err) {
+		return nil, err
 	}
 
 	// reget the new pvc so we get an updated volume name
 	newPVC, err := client.CoreV1().PersistentVolumeClaims(originalPVC.Namespace).Get(ctx, pvc.Name, metav1.GetOptions{})
 	if err != nil {
-		return corev1.PersistentVolumeClaim{}, errors.Wrap(err, "Unable to update the pvc reference")
+		return nil, errors.Wrap(err, "Unable to update the pvc reference")
 	}
 
-	return *newPVC, nil
+	return util.NewPVCInfo(newPVC), nil
 }
 
-func DeletePVC(ctx context.Context, namespace, pvcName string) error {
+func (a *PVCActivities) DeletePVC(ctx context.Context, namespace, pvcName string) error {
 	client, err := util.GetClientset()
 	if err != nil {
 		return err
 	}
 	return k8s.DeletePVCandWait(ctx, client, namespace, pvcName)
-
 }
 
-func RebindPV(ctx context.Context, namespace, pvName string, origPVC *corev1.PersistentVolumeClaim, newSize string) error {
+func (a *PVCActivities) RebindPV(ctx context.Context, namespace, pvName string, origPVC util.PvcInfo, newSize string) error {
 	client, err := util.GetClientset()
 	if err != nil {
 		return err
 	}
 
+	if err := k8s.UnlinkPV(ctx, client, origPVC.VolumeName); err != nil {
+		return err
+	}
 	if err := k8s.UnlinkPV(ctx, client, pvName); err != nil {
 		return err
 	}
 
 	fmt.Println("Creating cloned pvc")
-	newPVC := origPVC.DeepCopy()
-	newPVC.Spec.VolumeName = pvName
-	newPVC.ObjectMeta = metav1.ObjectMeta{
-		Name:        origPVC.Name,
-		Labels:      origPVC.Labels,
-		Annotations: origPVC.Annotations,
-	}
-	newPVC.Spec.Resources = corev1.VolumeResourceRequirements{
-		Requests: corev1.ResourceList{"storage": resource.MustParse(newSize)},
-		Limits:   corev1.ResourceList{"storage": resource.MustParse(newSize)},
-	}
+	origPVC.VolumeName = pvName
+	origPVC.Annotations = nil
+	origPVC.RequestedStorage = newSize
+	origPVC.LimitStorage = newSize
 
-	return k8s.CreatePVCandWait(ctx, client, namespace, newPVC)
+	pvc, err := origPVC.ToK8s()
+	if err != nil {
+		return errors.Wrap(err, "Unable to convert metadata to k8s resource")
+	}
+	return k8s.CreatePVCandWait(ctx, client, namespace, pvc)
 }
 
-func GetPVC(ctx context.Context, namespace, pvcName string) (*corev1.PersistentVolumeClaim, error) {
+func (a *PVCActivities) GetPVC(ctx context.Context, namespace, pvcName string) (*util.PvcInfo, error) {
+	fmt.Println("got this", namespace, pvcName)
 	client, err := util.GetClientset()
 	if err != nil {
 		return nil, err
@@ -88,5 +93,6 @@ func GetPVC(ctx context.Context, namespace, pvcName string) (*corev1.PersistentV
 		return nil, err
 	}
 
-	return pvc, err
+	fmt.Println("returning this", pvc)
+	return util.NewPVCInfo(pvc), err
 }

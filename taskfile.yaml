@@ -21,3 +21,6 @@ tasks:
     cmds:
       - docker buildx build . -t docker.shifman.dev/shifman/down-pvscope --platform linux/arm64,linux/amd64
       - docker push docker.shifman.dev/shifman/down-pvscope
+  proto:gen:
+    desc: "Generate protobuf"
+    cmd: buf generate

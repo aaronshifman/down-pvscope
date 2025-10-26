@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package workflows.scaler.v1;
+
+option go_package = "github.com/aaronshifman/down-pvscope/api/down-pvscope/v1";
+
+message Scale {
+  string namespace = 1;
+  string pvc = 2;
+  string size = 3;
+}

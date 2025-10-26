@@ -16,6 +16,7 @@ import (
 // createPVCandWait creates a pvc in k8s and waits until the PV is bound before returning
 // if either the pvc fails to create or the pvc fails to bind "fast enough" (2mins) this errors
 func CreatePVCandWait(ctx context.Context, client kubernetes.Interface, ns string, pvc *corev1.PersistentVolumeClaim) error {
+	fmt.Println("starting create")
 	_, err := client.CoreV1().PersistentVolumeClaims(ns).Create(ctx, pvc, metav1.CreateOptions{})
 	if err != nil {
 		return errors.Wrap(err, "Could not create pvc")

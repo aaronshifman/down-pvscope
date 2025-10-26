@@ -12,7 +12,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-func Runrclone(ctx context.Context, originalPVC, newPVC *corev1.PersistentVolumeClaim, namespace string) error {
+type JobActivities struct{}
+
+func (a *JobActivities) Runrclone(ctx context.Context, originalPVC, newPVC *util.PvcInfo, namespace string) error {
 	client, err := util.GetClientset()
 	if err != nil {
 		return err

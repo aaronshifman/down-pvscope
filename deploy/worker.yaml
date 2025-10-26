@@ -18,6 +18,7 @@ spec:
         app: down-pvscope
         k8s.shifman.dev/netpol.kube-dns: "true"
         k8s.shifman.dev/netpol.prometheus: "true"
+        k8s.shifman.dev/netpol.temporal: "true"
         k8s.shifman.dev/netpol.kube-apiserver: "true"
     spec:
       serviceAccountName: down-pvscope
@@ -45,9 +46,8 @@ spec:
           command:
             - ./main
           args:
-            - --namespace=down-pvscope
-            - --pvc=bogus
-            - --size=0.5Gi
+            - --temporal-url=temporal-frontend.temporal.svc.cluster.local.:7233
+            - --temporal-namespace=down-pvscope
           imagePullPolicy: Always
           name: worker
           image: docker.shifman.dev/shifman/down-pvscope

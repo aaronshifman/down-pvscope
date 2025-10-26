@@ -2,108 +2,64 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
-	"time"
 
 	"github.com/aaronshifman/down-pvscope/pkg/activities"
+	"github.com/aaronshifman/down-pvscope/pkg/workflows"
 	"github.com/urfave/cli/v3"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 )
 
 func main() {
 	cmd := &cli.Command{
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:     "namespace",
+				Name:     "temporal-url",
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:     "pvc",
-				Required: true,
-			},
-			&cli.StringFlag{
-				Name:     "size",
+				Name:     "temporal-namespace",
 				Required: true,
 			},
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			namespace := cmd.String("namespace")
-			pvc := cmd.String("pvc")
-			size := cmd.String("size")
+			temporal := cmd.String("temporal-url")
+			temporalNamespace := cmd.String("temporal-namespace")
 
-			workflow(ctx, namespace, pvc, size)
+			c, err := client.Dial(client.Options{
+				HostPort:  temporal,
+				Namespace: temporalNamespace,
+			})
+			if err != nil {
+				log.Fatalln("Unable to create Temporal client", err)
+			}
+			defer c.Close()
+
+			// Create the Temporal worker
+			w := worker.New(c, workflows.TaskQueueName, worker.Options{})
+
+			pvcActivities := &activities.PVCActivities{}
+			pvActivities := &activities.PVActivities{}
+			jobActivities := &activities.JobActivities{}
+
+			// Register Workflow and Activities
+			w.RegisterWorkflow(workflows.ScaleDownWorkflow)
+			w.RegisterActivity(pvcActivities)
+			w.RegisterActivity(pvActivities)
+			w.RegisterActivity(jobActivities)
+
+			// Start the Worker
+			err = w.Run(worker.InterruptCh())
+			if err != nil {
+				log.Fatalln("Unable to start Temporal worker", err)
+			}
+
 			return nil
 		},
 	}
 	if err := cmd.Run(context.Background(), os.Args); err != nil {
 		log.Fatal(err)
 	}
-}
-
-// pretend workflow until this is hooked up to temporal
-func workflow(ctx context.Context, namespace, pvc, size string) {
-	// find existing
-	originalPVC, err := activities.GetPVC(ctx, namespace, pvc)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(originalPVC.Spec.VolumeName)
-
-	// mark existing safe
-	// TODO: store original status and restore at end
-	_, err = activities.EnsureReclaimPolicyRetain(ctx, originalPVC.Spec.VolumeName)
-	if err != nil {
-		panic(err)
-	}
-
-	// create new PVC / provision new PV
-	// waits for pvc to bind before returning
-	newPVC, err := activities.CreateStagingPVC(ctx, *originalPVC, size)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(newPVC.Spec.VolumeName)
-
-	// make sure new PV is safe
-	// TODO: set the original reclaim policy on this PV
-	originalPolicy, err := activities.EnsureReclaimPolicyRetain(ctx, newPVC.Spec.VolumeName)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("Starting rclone job")
-	err = activities.Runrclone(ctx, originalPVC, &newPVC, namespace)
-	if err != nil {
-		panic(err)
-	}
-
-	// drop both pvs
-	err = activities.DeletePVC(ctx, namespace, originalPVC.Name)
-	if err != nil {
-		panic(err)
-	}
-	err = activities.DeletePVC(ctx, namespace, newPVC.Name)
-	if err != nil {
-		panic(err)
-	}
-
-	// map the new pv to the original pvc
-	fmt.Println("Rebinding PVC")
-	err = activities.RebindPV(ctx, namespace, newPVC.Spec.VolumeName, originalPVC, size)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("Resetting the PV retain policy")
-	err = activities.SetReclaimPolicy(ctx, newPVC.Spec.VolumeName, originalPolicy)
-	if err != nil {
-		panic(err)
-	}
-
-	// TODO: optionally drop the original pv
-
-	fmt.Println("Done: sleeping")
-
-	time.Sleep(10000 * time.Hour)
 }

@@ -8,7 +8,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-func EnsureReclaimPolicyRetain(ctx context.Context, pvName string) (corev1.PersistentVolumeReclaimPolicy, error) {
+type PVActivities struct{}
+
+func (pva *PVActivities) EnsureReclaimPolicyRetain(ctx context.Context, pvName string) (corev1.PersistentVolumeReclaimPolicy, error) {
 	client, err := util.GetClientset()
 	if err != nil {
 		return "", err
@@ -17,7 +19,7 @@ func EnsureReclaimPolicyRetain(ctx context.Context, pvName string) (corev1.Persi
 	return k8s.SetPVRetainPolicy(ctx, client, pvName, corev1.PersistentVolumeReclaimRetain)
 }
 
-func SetReclaimPolicy(ctx context.Context, pvName string, policy corev1.PersistentVolumeReclaimPolicy) error {
+func (pva *PVActivities) SetReclaimPolicy(ctx context.Context, pvName string, policy corev1.PersistentVolumeReclaimPolicy) error {
 	client, err := util.GetClientset()
 	if err != nil {
 		return err
