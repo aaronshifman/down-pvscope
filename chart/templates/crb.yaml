@@ -1,0 +1,16 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{.Release.Name}}-pv-editor-binding
+  labels:
+    {{- $ctx := deepCopy . -}}
+    {{- $_ := set $ctx.Values "component" "crb" -}}
+    {{- include "commonLabels" $ctx | nindent 4 }}
+roleRef:
+  kind: ClusterRole
+  name: {{.Release.Name}}-pv-editor-role
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: {{.Release.Name}}-sa
+    namespace: {{.Release.Namespace}}

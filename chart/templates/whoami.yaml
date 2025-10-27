@@ -1,0 +1,40 @@
+{{if .Values.includeDemo }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{.Release.Name}}-demo-app
+  labels:
+    {{- $ctx := deepCopy . -}}
+    {{- $_ := set $ctx.Values "component" "demo-app" -}}
+    {{- include "commonLabels" $ctx | nindent 4 }}
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+        {{- $ctx := deepCopy . -}}
+        {{- $_ := set $ctx.Values "component" "demo-app" -}}
+        {{- include "selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- $ctx := deepCopy . -}}
+        {{- $_ := set $ctx.Values "component" "demo-app" -}}
+        {{- include "commonLabels" $ctx | nindent 8 }}
+        {{- with .Values.extraPodLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami:latest
+          ports:
+            - containerPort: 80
+  volumeClaimTemplates:
+    - metadata:
+        name: foo
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+{{end}}

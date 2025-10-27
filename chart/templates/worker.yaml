@@ -1,27 +1,33 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: down-pvscope
-  namespace: down-pvscope
+  name: {{.Release.Name}}-worker
   labels:
-    app: down-pvscope
+    {{- $ctx := deepCopy . -}}
+    {{- $_ := set $ctx.Values "component" "worker" -}}
+    {{- include "commonLabels" $ctx | nindent 4 }}
 spec:
   selector:
     matchLabels:
-      app: down-pvscope
+      {{- $ctx := deepCopy . -}}
+      {{- $_ := set $ctx.Values "component" "worker" -}}
+      {{- include "selectorLabels" $ctx | nindent 6 }}
   replicas: 1
   template:
     metadata:
-      annotations:
-        reloader.stakater.com/auto: "true"
       labels:
-        app: down-pvscope
-        k8s.shifman.dev/netpol.kube-dns: "true"
-        k8s.shifman.dev/netpol.prometheus: "true"
-        k8s.shifman.dev/netpol.temporal: "true"
-        k8s.shifman.dev/netpol.kube-apiserver: "true"
+        {{- $ctx := deepCopy . -}}
+        {{- $_ := set $ctx.Values "component" "worker" -}}
+        {{- include "commonLabels" $ctx | nindent 8 }}
+        {{- with .Values.extraPodLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
-      serviceAccountName: down-pvscope
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{.Release.Name}}-sa
       securityContext:
         fsGroupChangePolicy: "OnRootMismatch"
         runAsNonRoot: true
@@ -48,8 +54,6 @@ spec:
           args:
             - --temporal-url=temporal-frontend.temporal.svc.cluster.local.:7233
             - --temporal-namespace=down-pvscope
-          imagePullPolicy: Always
+          imagePullPolicy: {{.Values.imagePullPolicy}}
           name: worker
-          image: docker.shifman.dev/shifman/down-pvscope
-      imagePullSecrets:
-        - name: docker-pull-secret
+          image: {{.Values.image}}:{{.Values.version | default "latest"}}

@@ -1,0 +1,11 @@
+includeDemo: true
+extraPodLabels:
+  k8s.shifman.dev/netpol.kube-dns: "true"
+  k8s.shifman.dev/netpol.prometheus: "true"
+  k8s.shifman.dev/netpol.temporal: "true"
+  k8s.shifman.dev/netpol.kube-apiserver: "true"
+image: docker.shifman.dev/shifman/down-pvscope
+version: ~
+imagePullPolicy: Always
+imagePullSecrets:
+  - name: docker-pull-secret

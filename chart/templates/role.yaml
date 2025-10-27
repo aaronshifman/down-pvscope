@@ -1,8 +1,11 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: pvc-editor-role
-  namespace: down-pvscope
+  name: {{.Release.Name}}-pvc-editor-role
+  labels:
+    {{- $ctx := deepCopy . -}}
+    {{- $_ := set $ctx.Values "component" "role" -}}
+    {{- include "commonLabels" $ctx | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]

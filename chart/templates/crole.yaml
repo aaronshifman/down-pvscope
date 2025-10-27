@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{.Release.Name}}-pv-editor-role
+  labels:
+    {{- $ctx := deepCopy . -}}
+    {{- $_ := set $ctx.Values "component" "crole" -}}
+    {{- include "commonLabels" $ctx | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["update", "list", "get", "delete"]
