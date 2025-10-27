@@ -1,7 +1,6 @@
 package workflows
 
 import (
-	"fmt"
 	"time"
 
 	proto "github.com/aaronshifman/down-pvscope/api/down-pvscope/v1"
@@ -16,6 +15,8 @@ const TaskQueueName = "down-pvscope"
 
 // nolint: funlen
 func ScaleDownWorkflow(ctx workflow.Context, input *proto.Scale) error {
+	logger := workflow.GetLogger(ctx)
+	logger.Info("Starting workflow", "namespace", input.Namespace, "newSize", input.Size, "pvcTarget", input.Pvc)
 	ao := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
@@ -31,59 +32,66 @@ func ScaleDownWorkflow(ctx workflow.Context, input *proto.Scale) error {
 	var ja *activities.JobActivities
 
 	// get original PVC
+	logger.Info("Getting the original PVC", "pvc", input.Pvc, "namespace", input.Namespace)
 	originalPVC := util.PvcInfo{}
 	err := workflow.ExecuteActivity(ctx, pvca.GetPVC, input.Namespace, input.Pvc).Get(ctx, &originalPVC)
 	if err != nil {
 		return err
 	}
-	fmt.Println(originalPVC.VolumeName)
+	logger.Debug("Original pvc", "volume", originalPVC.VolumeName, "name", originalPVC.Namespace, "originalStorage", originalPVC.RequestedStorage)
 
 	// mark existing pv safe (retain)
+	logger.Info("Marging the original pv retain", "pv", originalPVC.VolumeName)
 	var originalRetentionPolicy corev1.PersistentVolumeReclaimPolicy
 	err = workflow.ExecuteActivity(ctx, pva.EnsureReclaimPolicyRetain, originalPVC.VolumeName).Get(ctx, &originalRetentionPolicy)
 	if err != nil {
 		return err
 	}
+	logger.Debug("pv retention", "original", originalRetentionPolicy)
 
-	// // create new PVC / provision new PV
+	// create new PVC / provision new PV
+	logger.Info("Provisioning PVC of new size", "newSize", input.Size)
 	newPVC := util.PvcInfo{}
 	err = workflow.ExecuteActivity(ctx, pvca.CreateStagingPVC, originalPVC, input.Size).Get(ctx, &newPVC)
 	if err != nil {
 		return err
 	}
-	fmt.Println(originalPVC.VolumeName, newPVC.VolumeName)
+	logger.Debug("New pvc", "name", newPVC.Name, "size", newPVC.RequestedStorage, "volume", newPVC.VolumeName)
 
 	// // make sure new PV is safe
-	// // TODO: set the original reclaim policy on this PV
+	logger.Info("Ensuring that new PV is retain")
 	err = workflow.ExecuteActivity(ctx, pva.EnsureReclaimPolicyRetain, newPVC.VolumeName).Get(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("Starting rclone job")
+	logger.Info("Creating RClone job", "originalPVC", originalPVC.Name, "newPVC", newPVC.Name, "originalSize", originalPVC.RequestedStorage, "newSize", newPVC.RequestedStorage)
 	err = workflow.ExecuteActivity(ctx, ja.Runrclone, originalPVC, newPVC, input.Namespace).Get(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	// // drop both pvs
+	// drop both pvs
+	logger.Info("Dropping pvc", "pvc", originalPVC.Name)
 	err = workflow.ExecuteActivity(ctx, pvca.DeletePVC, input.Namespace, originalPVC.Name).Get(ctx, nil)
 	if err != nil {
 		return err
 	}
+
+	logger.Info("Dropping pvc", "pvc", newPVC.Name)
 	err = workflow.ExecuteActivity(ctx, pvca.DeletePVC, input.Namespace, newPVC.Name).Get(ctx, nil)
 	if err != nil {
 		return err
 	}
 
 	// map the new pv to the original pvc
-	fmt.Println("Rebinding PVC")
+	logger.Info("Rebinding original PVC name to new PV", "newPV", newPVC.VolumeName, "originalPVC", originalPVC.Name, "newSize", input.Size)
 	err = workflow.ExecuteActivity(ctx, pvca.RebindPV, input.Namespace, newPVC.VolumeName, originalPVC, input.Size).Get(ctx, nil)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("Resetting the PV retain policy")
+	logger.Info("Resetting reclaim policy on new PV", "pv", newPVC.VolumeName, "originalPolicy", originalRetentionPolicy)
 	err = workflow.ExecuteActivity(ctx, pva.SetReclaimPolicy, newPVC.VolumeName, originalRetentionPolicy).Get(ctx, nil)
 	if err != nil {
 		return err
@@ -91,6 +99,6 @@ func ScaleDownWorkflow(ctx workflow.Context, input *proto.Scale) error {
 
 	// TODO: optionally drop the original pv
 
-	fmt.Println("Done")
+	logger.Info("Workflow done")
 	return nil
 }

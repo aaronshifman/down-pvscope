@@ -2,7 +2,7 @@ package k8s
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/pkg/errors"
@@ -16,7 +16,7 @@ import (
 // createPVCandWait creates a pvc in k8s and waits until the PV is bound before returning
 // if either the pvc fails to create or the pvc fails to bind "fast enough" (2mins) this errors
 func CreatePVCandWait(ctx context.Context, client kubernetes.Interface, ns string, pvc *corev1.PersistentVolumeClaim) error {
-	fmt.Println("starting create")
+	slog.DebugContext(ctx, "Creating new PVC", "name", pvc.Name, "size", pvc.Spec.Resources.Requests)
 	_, err := client.CoreV1().PersistentVolumeClaims(ns).Create(ctx, pvc, metav1.CreateOptions{})
 	if err != nil {
 		return errors.Wrap(err, "Could not create pvc")
@@ -24,6 +24,7 @@ func CreatePVCandWait(ctx context.Context, client kubernetes.Interface, ns strin
 
 	err = wait.PollUntilContextTimeout(ctx, 2*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
 		vc, err := client.CoreV1().PersistentVolumeClaims(ns).Get(ctx, pvc.Name, metav1.GetOptions{})
+		slog.DebugContext(ctx, "Polling for new pvc state", "name", vc.Name, "status", vc.Status.Phase)
 		if err != nil {
 			return false, err
 		}
@@ -43,19 +44,21 @@ func CreatePVCandWait(ctx context.Context, client kubernetes.Interface, ns strin
 // DeletePVCandWait drops a pvc in k8s and waits until the PVC no longer exists
 // if either the pvc fails to delete or the pvc fails to delete "fast enough" (2mins) this errors
 func DeletePVCandWait(ctx context.Context, client kubernetes.Interface, ns string, pvc string) error {
+	slog.DebugContext(ctx, "Dropping PVC", "name", pvc)
 	err := client.CoreV1().PersistentVolumeClaims(ns).Delete(ctx, pvc, metav1.DeleteOptions{})
 	if k8errors.IsNotFound(err) {
-		fmt.Println("PVC already deleted")
+		slog.InfoContext(ctx, "PVC already deleted - skipping delete", "pvc", pvc, "error", err)
 		return nil
 	} else if err != nil {
 		return errors.Wrap(err, "Unable to drop pvc")
 	}
 
 	err = wait.PollUntilContextTimeout(ctx, 1*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
-		_, err := client.CoreV1().PersistentVolumeClaims(ns).Get(ctx, pvc, metav1.GetOptions{})
+		vc, err := client.CoreV1().PersistentVolumeClaims(ns).Get(ctx, pvc, metav1.GetOptions{})
 
 		// resource hasn't been deleted yet
 		if err == nil {
+			slog.DebugContext(ctx, "Polling for deleted pvc state", "name", vc.Name, "status", vc.Status.Phase)
 			return false, nil
 		}
 

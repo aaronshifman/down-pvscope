@@ -2,6 +2,7 @@ package activities
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/aaronshifman/down-pvscope/pkg/util"
@@ -21,6 +22,7 @@ func (a *JobActivities) Runrclone(ctx context.Context, originalPVC, newPVC *util
 	}
 
 	job := makeJob(originalPVC.Name, newPVC.Name, namespace)
+	slog.DebugContext(ctx, "New Job", "name", job.Name, "namespace", job.Namespace)
 
 	// Create the Job in Kubernetes
 	jobsClient := client.BatchV1().Jobs(namespace)
@@ -30,11 +32,11 @@ func (a *JobActivities) Runrclone(ctx context.Context, originalPVC, newPVC *util
 	}
 	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, 30*time.Minute, true, func(ctx context.Context) (done bool, err error) {
 		jobStatus, err := jobsClient.Get(ctx, createdJob.Name, metav1.GetOptions{})
+		slog.DebugContext(ctx, "checking job progression", "jobName", createdJob.Name, "success", jobStatus.Status.Succeeded, "failed", jobStatus.Status.Failed)
 		if err != nil {
 			return false, err
 		}
 
-		// Check Job status
 		if jobStatus.Status.Succeeded > 0 {
 			return true, nil
 		}

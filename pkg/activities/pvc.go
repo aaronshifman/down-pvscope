@@ -2,7 +2,7 @@ package activities
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 
 	"github.com/aaronshifman/down-pvscope/pkg/k8s"
 	"github.com/aaronshifman/down-pvscope/pkg/util"
@@ -27,6 +27,7 @@ func (a *PVCActivities) CreateStagingPVC(ctx context.Context, originalPVC util.P
 	originalPVC.Annotations = nil
 	originalPVC.RequestedStorage = size
 	originalPVC.LimitStorage = size
+	slog.InfoContext(ctx, "Creating staging PVC", "name", originalPVC.Name, "newSize", size)
 
 	pvc, err := originalPVC.ToK8s()
 	if err != nil {
@@ -56,19 +57,22 @@ func (a *PVCActivities) DeletePVC(ctx context.Context, namespace, pvcName string
 }
 
 func (a *PVCActivities) RebindPV(ctx context.Context, namespace, pvName string, origPVC util.PvcInfo, newSize string) error {
+	slog.DebugContext(ctx, "Binding original PVC name to new PV", "pv", pvName, "pvc", origPVC.Name)
 	client, err := util.GetClientset()
 	if err != nil {
 		return err
 	}
 
+	slog.DebugContext(ctx, "Unlinking original PV", "pv", origPVC.VolumeName)
 	if err := k8s.UnlinkPV(ctx, client, origPVC.VolumeName); err != nil {
 		return err
 	}
+	slog.DebugContext(ctx, "Unlinking new PV", "pv", pvName)
 	if err := k8s.UnlinkPV(ctx, client, pvName); err != nil {
 		return err
 	}
 
-	fmt.Println("Creating cloned pvc")
+	slog.InfoContext(ctx, "Creating new PVC to match original", "name", origPVC.Name, "pv", pvName)
 	origPVC.VolumeName = pvName
 	origPVC.Annotations = nil
 	origPVC.RequestedStorage = newSize
@@ -82,7 +86,6 @@ func (a *PVCActivities) RebindPV(ctx context.Context, namespace, pvName string, 
 }
 
 func (a *PVCActivities) GetPVC(ctx context.Context, namespace, pvcName string) (*util.PvcInfo, error) {
-	fmt.Println("got this", namespace, pvcName)
 	client, err := util.GetClientset()
 	if err != nil {
 		return nil, err
@@ -93,6 +96,5 @@ func (a *PVCActivities) GetPVC(ctx context.Context, namespace, pvcName string) (
 		return nil, err
 	}
 
-	fmt.Println("returning this", pvc)
 	return util.NewPVCInfo(pvc), err
 }

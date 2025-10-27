@@ -2,7 +2,7 @@ package k8s
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/pkg/errors"
@@ -18,7 +18,7 @@ func UnlinkPV(ctx context.Context, client kubernetes.Interface, pvName string) e
 		return errors.Wrap(err, "Could not get PV")
 	}
 
-	fmt.Println("Unlinking existing volume")
+	slog.InfoContext(ctx, "Ulinking PV and PVC", "pv", pvName)
 	pv.Spec.ClaimRef = nil
 	_, err = client.CoreV1().PersistentVolumes().Update(ctx, pv, metav1.UpdateOptions{})
 	if err != nil {
@@ -30,6 +30,7 @@ func UnlinkPV(ctx context.Context, client kubernetes.Interface, pvName string) e
 		if err != nil {
 			return false, err
 		}
+		slog.DebugContext(ctx, "Polling for PV state", "claim", v.Spec.ClaimRef)
 
 		if v.Spec.ClaimRef == nil {
 			return true, nil
