@@ -43,12 +43,14 @@ func main() {
 			pvcActivities := &activities.PVCActivities{}
 			pvActivities := &activities.PVActivities{}
 			jobActivities := &activities.JobActivities{}
+			stsAcitivies := &activities.STSActivities{}
 
 			// Register Workflow and Activities
 			w.RegisterWorkflow(workflows.ScaleDownWorkflow)
 			w.RegisterActivity(pvcActivities)
 			w.RegisterActivity(pvActivities)
 			w.RegisterActivity(jobActivities)
+			w.RegisterActivity(stsAcitivies)
 
 			// Start the Worker
 			err = w.Run(worker.InterruptCh())

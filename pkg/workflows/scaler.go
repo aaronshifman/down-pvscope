@@ -16,7 +16,7 @@ const TaskQueueName = "down-pvscope"
 // nolint: funlen
 func ScaleDownWorkflow(ctx workflow.Context, input *proto.Scale) error {
 	logger := workflow.GetLogger(ctx)
-	logger.Info("Starting workflow", "namespace", input.Namespace, "newSize", input.Size, "pvcTarget", input.Pvc)
+	logger.Info("Starting workflow", "namespace", input.Namespace, "newSize", input.Size, "pvcTarget", input.Pvc, "sts", input.Sts)
 	ao := workflow.ActivityOptions{
 		StartToCloseTimeout: time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
@@ -30,6 +30,7 @@ func ScaleDownWorkflow(ctx workflow.Context, input *proto.Scale) error {
 	var pvca *activities.PVCActivities
 	var pva *activities.PVActivities
 	var ja *activities.JobActivities
+	var sts *activities.STSActivities
 
 	// get original PVC
 	logger.Info("Getting the original PVC", "pvc", input.Pvc, "namespace", input.Namespace)
@@ -58,13 +59,31 @@ func ScaleDownWorkflow(ctx workflow.Context, input *proto.Scale) error {
 	}
 	logger.Debug("New pvc", "name", newPVC.Name, "size", newPVC.RequestedStorage, "volume", newPVC.VolumeName)
 
-	// // make sure new PV is safe
+	// make sure new PV is safe
 	logger.Info("Ensuring that new PV is retain")
 	err = workflow.ExecuteActivity(ctx, pva.EnsureReclaimPolicyRetain, newPVC.VolumeName).Get(ctx, nil)
 	if err != nil {
 		return err
 	}
 
+	// getting initial starting point for replicas
+	logger.Info("Getting starting point for replicas", "sts", input.Sts)
+	var initialReplicas int64
+	err = workflow.ExecuteActivity(ctx, sts.GetInitialReplicase, input.Namespace, input.Sts).Get(ctx, &initialReplicas)
+	if err != nil {
+		return err
+	}
+	logger.Debug("Found replicas", "count", initialReplicas)
+
+	// scaling sts to 0
+	// TODO: ensure all other pvcs aren't nuked on scale down
+	logger.Info("Scaling sts to 0", "sts", input.Sts)
+	err = workflow.ExecuteActivity(ctx, sts.ScaleTo0, input.Namespace, input.Sts).Get(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	// TODO: figure out scale down then rclone or other way around
 	logger.Info("Creating RClone job", "originalPVC", originalPVC.Name, "newPVC", newPVC.Name, "originalSize", originalPVC.RequestedStorage, "newSize", newPVC.RequestedStorage)
 	err = workflow.ExecuteActivity(ctx, ja.Runrclone, originalPVC, newPVC, input.Namespace).Get(ctx, nil)
 	if err != nil {
@@ -93,6 +112,12 @@ func ScaleDownWorkflow(ctx workflow.Context, input *proto.Scale) error {
 
 	logger.Info("Resetting reclaim policy on new PV", "pv", newPVC.VolumeName, "originalPolicy", originalRetentionPolicy)
 	err = workflow.ExecuteActivity(ctx, pva.SetReclaimPolicy, newPVC.VolumeName, originalRetentionPolicy).Get(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	logger.Info("Rescaling sts", "sts", input.Sts)
+	err = workflow.ExecuteActivity(ctx, sts.ScaleUp, input.Namespace, input.Sts, initialReplicas).Get(ctx, nil)
 	if err != nil {
 		return err
 	}

@@ -8,4 +8,5 @@ message Scale {
   string namespace = 1;
   string pvc = 2;
   string size = 3;
+  string sts =4;
 }

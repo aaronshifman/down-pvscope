@@ -10,3 +10,6 @@ rules:
   - apiGroups: ["batch"]
     resources: ["jobs"]
     verbs: ["update", "list", "get", "delete", "create"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["update", "list", "get", "delete", "create"]
