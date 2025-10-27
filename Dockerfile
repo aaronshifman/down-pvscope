@@ -1,6 +1,6 @@
 FROM scratch 
-
+ARG TARGETPLATFORM
 WORKDIR /app
-COPY bin/main ./main
+COPY $TARGETPLATFORM/down-pvscope ./main
 CMD ["./main"]
 

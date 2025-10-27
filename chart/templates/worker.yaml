@@ -8,6 +8,10 @@ metadata:
     {{- include "commonLabels" $ctx | nindent 4 }}
 spec:
   selector:
+    {{- if .Values.test}}
+    annotations:  
+      restart: {{randAlpha 16}}
+    {{- end}}
     matchLabels:
       {{- $ctx := deepCopy . -}}
       {{- $_ := set $ctx.Values "component" "worker" -}}
@@ -56,4 +60,4 @@ spec:
             - --temporal-namespace=down-pvscope
           imagePullPolicy: {{.Values.imagePullPolicy}}
           name: worker
-          image: {{.Values.image}}:{{.Values.version | default "latest"}}
+          image: {{.Values.image}}:{{.Values.version | default .Chart.AppVersion }}

@@ -24,3 +24,5 @@ tasks:
   proto:gen:
     desc: "Generate protobuf"
     cmd: buf generate
+  deploy:
+    cmd: helm upgrade down-pvscope oci://ghcr.io/aaronshifman/charts/down-pvscope:v0.1 -f aaronvalues.yaml --install --namespace down-pvscope

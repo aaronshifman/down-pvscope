@@ -1,0 +1,39 @@
+version: 2
+
+# Project metadata
+project_name: down-pvscope
+
+# Build configuration
+builds:
+  - id: down-pvscope
+    main: ./cmd/down-pvscope
+    binary: down-pvscope
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+# Docker image configuration
+dockers_v2:
+  - images:
+      - "ghcr.io/aaronshifman/{{ .ProjectName }}"
+
+    tags:
+      - "v{{.Version }}"
+      - latest
+
+    labels:
+      "org.opencontainers.image.title": "{{ .ProjectName }}"
+      "org.opencontainers.image.description": "Temporal workflow to scale down pvcs"
+      "org.opencontainers.image.url": "https://github.com/aaronshifman/{{ .ProjectName }}"
+      "org.opencontainers.image.source": "https://github.com/aaronshifman/{{ .ProjectName }}"
+      "org.opencontainers.image.version": "{{ .Version }}"
+      "org.opencontainers.image.created": "{{ .Date }}"
+      "org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "org.opencontainers.image.licenses": "MIT"
